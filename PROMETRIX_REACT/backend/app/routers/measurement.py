@@ -14,9 +14,9 @@ from app.schemas.measurement import MeasurementCreate, MeasurementUpdate, Measur
 router = APIRouter(prefix="/measurements", tags=["measurements"])
 
 
-def calculate_mean(m1: Optional[float], m2: Optional[float], m3: Optional[float]) -> Optional[float]:
-    """Calculate mean of m1, m2, m3 if all are provided."""
-    values = [v for v in [m1, m2, m3] if v is not None]
+def calculate_mean(m1: Optional[float], m2: Optional[float], m3: Optional[float], m4: Optional[float] = None, m5: Optional[float] = None) -> Optional[float]:
+    """Calculate mean of m1-m5 if any are provided."""
+    values = [v for v in [m1, m2, m3, m4, m5] if v is not None]
     if len(values) > 0:
         return sum(values) / len(values)
     return None
@@ -70,6 +70,12 @@ def calculate_go_no_go(
     return GoNoGoStatus.NO_GO
 
 
+@router.post("", response_model=MeasurementResponse, status_code=status.HTTP_201_CREATED)
+def create_measurement_no_slash(measurement: MeasurementCreate, db: Session = Depends(get_db)):
+    """Create a new measurement (no trailing slash version)."""
+    return create_measurement(measurement, db)
+
+
 @router.post("/", response_model=MeasurementResponse, status_code=status.HTTP_201_CREATED)
 def create_measurement(measurement: MeasurementCreate, db: Session = Depends(get_db)):
     """Create a new measurement."""
@@ -105,7 +111,7 @@ def create_measurement(measurement: MeasurementCreate, db: Session = Depends(get
     # Calculate mean if not provided
     measurement_data = measurement.model_dump()
     if measurement_data.get("mean") is None:
-        mean = calculate_mean(measurement.m1, measurement.m2, measurement.m3)
+        mean = calculate_mean(measurement.m1, measurement.m2, measurement.m3, measurement.m4, measurement.m5)
         if mean is not None:
             measurement_data["mean"] = mean
     else:
@@ -127,6 +133,19 @@ def create_measurement(measurement: MeasurementCreate, db: Session = Depends(get
     db.commit()
     db.refresh(db_measurement)
     return db_measurement
+
+
+@router.get("", response_model=List[MeasurementResponse])
+def list_measurements_no_slash(
+    balloon_id: Optional[int] = None,
+    part_id: Optional[int] = None,
+    quantity: Optional[int] = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    """List all measurements with optional filters (no trailing slash version)."""
+    return list_measurements(balloon_id, part_id, quantity, skip, limit, db)
 
 
 @router.get("/", response_model=List[MeasurementResponse])
@@ -202,9 +221,11 @@ def update_measurement(
     m1 = update_data.get("m1", measurement.m1)
     m2 = update_data.get("m2", measurement.m2)
     m3 = update_data.get("m3", measurement.m3)
+    m4 = update_data.get("m4", measurement.m4)
+    m5 = update_data.get("m5", measurement.m5)
     
     if "mean" not in update_data or update_data.get("mean") is None:
-        mean = calculate_mean(m1, m2, m3)
+        mean = calculate_mean(m1, m2, m3, m4, m5)
         if mean is not None:
             update_data["mean"] = mean
     else:

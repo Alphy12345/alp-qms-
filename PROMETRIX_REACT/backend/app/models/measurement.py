@@ -33,7 +33,9 @@ class Measurement(Base):
     m1 = Column(Float, nullable=True)  # First measurement
     m2 = Column(Float, nullable=True)  # Second measurement
     m3 = Column(Float, nullable=True)  # Third measurement
-    mean = Column(Float, nullable=True)  # Calculated mean of m1, m2, m3
+    m4 = Column(Float, nullable=True)  # Fourth measurement
+    m5 = Column(Float, nullable=True)  # Fifth measurement
+    mean = Column(Float, nullable=True)  # Calculated mean of m1-m5
     go_or_no_go = Column(SQLEnum(GoNoGoStatus), nullable=True)  # GO or NO_GO status
     
     # Metadata

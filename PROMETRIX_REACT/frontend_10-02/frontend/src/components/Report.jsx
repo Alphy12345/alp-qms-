@@ -37,6 +37,7 @@ const fetchBalloonedImageAsBase64 = async (pdfId) => {
 
 const Report = ({
   partData, partId, bomData, logo, setLogo, customFields, notes,
+  measurementCount = 3,
   showReportModal, setShowReportModal,
   showCustomFieldsModal, setShowCustomFieldsModal,
   showLogoModal, setShowLogoModal,
@@ -45,7 +46,9 @@ const Report = ({
 
   const { pdfData, pdfDimensions, currentPage } = useBboxStore();
   const [tableData, setTableData] = useState([]);
-  const [tableHeaders, setTableHeaders] = useState(['ID', 'NOMINAL', 'TOLERANCE', 'TYPE', 'M1', 'M2', 'M3', 'MEAN', 'STATUS']);
+  // Build headers dynamically based on measurementCount (3, 4, or 5)
+  const mHeaders = Array.from({ length: measurementCount }, (_, i) => `M${i + 1}`);
+  const [tableHeaders, setTableHeaders] = useState(['ID', 'NOMINAL', 'TOLERANCE', 'TYPE', ...mHeaders, 'MEAN', 'STATUS']);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, row: null, col: null });
 
   const handleContextMenu = (e, rowIndex, colIndex) => {
@@ -157,19 +160,27 @@ const Report = ({
     if (reportData?.quantity_reports?.length > 0) {
       const sel = reportData.quantity_reports.find(qr => qr.quantity.toString() === selectedQuantity) || reportData.quantity_reports[0];
       if (sel?.balloons) {
-        setTableData(sel.balloons.map(b => ({
-          nominal: b.balloon?.nominal || 'N/A',
-          tolerance: b.balloon?.utol && b.balloon?.ltol ? `${b.balloon.ltol} / ${b.balloon.utol}` : 'N/A',
-          type: b.balloon?.type || 'N/A',
-          m1: b.measurements?.[0]?.m1 || 'N/A',
-          m2: b.measurements?.[0]?.m2 || 'N/A',
-          m3: b.measurements?.[0]?.m3 || 'N/A',
-          mean: b.measurements?.[0]?.mean || 'N/A',
-          status: b.measurements?.[0]?.go_or_no_go || 'N/A'
-        })));
+        setTableData(sel.balloons.map(b => {
+          const meas = b.measurements?.[0] || {};
+          const row = {
+            nominal: b.balloon?.nominal ?? 'N/A',
+            tolerance: b.balloon?.utol && b.balloon?.ltol ? `${b.balloon.ltol} / ${b.balloon.utol}` : 'N/A',
+            type: b.balloon?.type || 'N/A',
+            mean: meas.mean ?? 'N/A',
+            status: meas.go_or_no_go || 'N/A'
+          };
+          // Add m1-m{measurementCount} fields; remaining are stored as null in DB
+          for (let i = 1; i <= measurementCount; i++) {
+            row[`m${i}`] = meas[`m${i}`] ?? 'N/A';
+          }
+          return row;
+        }));
       }
     }
-  }, [reportData, selectedQuantity]);
+    // Reset headers when measurementCount changes
+    const mHdrs = Array.from({ length: measurementCount }, (_, i) => `M${i + 1}`);
+    setTableHeaders(['ID', 'NOMINAL', 'TOLERANCE', 'TYPE', ...mHdrs, 'MEAN', 'STATUS']);
+  }, [reportData, selectedQuantity, measurementCount]);
 
   const handleLogoMouseDown = (e) => {
     e.preventDefault();
@@ -456,8 +467,21 @@ const Report = ({
       // Original table styling with green header
       const tm = marginLeft;
       const tw2 = contentWidth;
-      const cw = [tw2 * 0.04, tw2 * 0.10, tw2 * 0.13, tw2 * 0.18, tw2 * 0.06, tw2 * 0.06, tw2 * 0.06, tw2 * 0.06, tw2 * 0.09];
-      const hdrs = ['ID', 'NOMINAL', 'TOLERANCE', 'TYPE', 'M1', 'M2', 'M3', 'MEAN', 'STATUS'];
+      // Column widths: ID, NOMINAL, TOLERANCE, TYPE, M1..Mn, MEAN, STATUS
+      const mColW = tw2 * 0.06;
+      const fixedColsW = tw2 * 0.04 + tw2 * 0.10 + tw2 * 0.13 + tw2 * 0.18 + tw2 * 0.06 + tw2 * 0.09; // ID+NOM+TOL+TYPE+MEAN+STATUS
+      const remainW = tw2 - fixedColsW;
+      const mColWAdj = Math.min(mColW, remainW / measurementCount);
+      const cw = [
+        tw2 * 0.04,                                      // ID
+        tw2 * 0.10,                                      // NOMINAL
+        tw2 * 0.13,                                      // TOLERANCE
+        tw2 * 0.18,                                      // TYPE
+        ...Array.from({ length: measurementCount }, () => mColWAdj), // M1..Mn
+        tw2 * 0.06,                                      // MEAN
+        tw2 * 0.09                                       // STATUS
+      ];
+      const hdrs = ['ID', 'NOMINAL', 'TOLERANCE', 'TYPE', ...Array.from({ length: measurementCount }, (_, i) => `M${i + 1}`), 'MEAN', 'STATUS'];
       
       pdf.setFontSize(9); 
       pdf.setFont('helvetica', 'bold');
@@ -486,15 +510,14 @@ const Report = ({
           y = marginTop; 
         }
         
+        const mVals = Array.from({ length: measurementCount }, (_, i) => String(row[`m${i + 1}`] ?? '-').trim());
         const vals = [
           String(idx + 1), 
-          String(row.nominal || '-').trim(), 
+          String(row.nominal ?? '-').trim(), 
           String(row.tolerance || '-').trim(), 
           String(row.type || '-').trim(), 
-          String(row.m1 || '-').trim(), 
-          String(row.m2 || '-').trim(), 
-          String(row.m3 || '-').trim(), 
-          String(row.mean || '-').trim(), 
+          ...mVals,
+          String(row.mean ?? '-').trim(), 
           String(row.status || '-').trim()
         ];
         
@@ -506,8 +529,9 @@ const Report = ({
           pdf.setLineWidth(0.2); 
           pdf.rect(cx, y, cw[i], rwh);
           
-          if (i === 8) { 
-            const su = vals[8].toUpperCase(); 
+          const statusColIdx = 4 + measurementCount + 1; // TYPE(3) + M cols + MEAN
+          if (i === statusColIdx) { 
+            const su = vals[statusColIdx].toUpperCase(); 
             if (su === 'NO_GO' || su === 'NO-GO' || su === 'NO GO') 
               pdf.setTextColor(255, 0, 0); 
             else if (su === 'GO') 
@@ -675,26 +699,27 @@ const Report = ({
       }
 
       // ── Column widths ────────────────────────────────────────────
-      // A  = spacer, B–J = data table, K = gap, L–S = drawing
+      // A = spacer, B = ID, C = NOMINAL, D = TOLERANCE, E = TYPE,
+      // then M1..Mn, then MEAN, STATUS, gap, drawing area
+      const mExcelCols = Array.from({ length: measurementCount }, (_, i) => ({ width: 10 }));
+      const lastDataColIdx = 4 + measurementCount + 1; // 0-based: A=0,B=1... so data cols end at B+(4+mc)
       ws.columns = [
         { width: 3 },   // A  spacer
         { width: 20 },  // B  ID
         { width: 14 },  // C  NOMINAL
         { width: 18 },  // D  TOLERANCE
         { width: 20 },  // E  TYPE
-        { width: 10 },  // F  M1
-        { width: 10 },  // G  M2
-        { width: 10 },  // H  M3
-        { width: 10 },  // I  MEAN
-        { width: 13 },  // J  STATUS
-        { width: 3 },   // K  gap
-        { width: 14 },  // L  \
-        { width: 14 },  // M   |
-        { width: 14 },  // N   | drawing area  (~500 px wide total)
-        { width: 14 },  // O   |
-        { width: 14 },  // P   |
-        { width: 14 },  // Q   |
-        { width: 14 },  // R  /
+        ...mExcelCols,  // F..F+mc-1  M1..Mn
+        { width: 10 },  // MEAN
+        { width: 13 },  // STATUS
+        { width: 3 },   // gap
+        { width: 14 },  // drawing cols (L–R)
+        { width: 14 },
+        { width: 14 },
+        { width: 14 },
+        { width: 14 },
+        { width: 14 },
+        { width: 14 },
       ];
 
       let row = 1;
@@ -760,8 +785,8 @@ const Report = ({
       });
       row++;
 
-      // Table column headers (B–J)
-      const tblHdrs = ['ID', 'NOMINAL', 'TOLERANCE', 'TYPE', 'M1', 'M2', 'M3', 'MEAN', 'STATUS'];
+      // Table column headers (B–...) dynamic based on measurementCount
+      const tblHdrs = ['ID', 'NOMINAL', 'TOLERANCE', 'TYPE', ...Array.from({ length: measurementCount }, (_, i) => `M${i + 1}`), 'MEAN', 'STATUS'];
       tblHdrs.forEach((h, i) => {
         const c = ws.getCell(String.fromCharCode(66 + i) + row);
         c.value = h;
@@ -774,13 +799,15 @@ const Report = ({
 
       // Table data rows
       tableData.forEach((rowData, idx) => {
-        const vals = [idx + 1, rowData.nominal || '-', rowData.tolerance || '-', rowData.type || '-', rowData.m1 || '-', rowData.m2 || '-', rowData.m3 || '-', rowData.mean || '-', rowData.status || '-'];
+        const mValsExcel = Array.from({ length: measurementCount }, (_, i) => rowData[`m${i + 1}`] || '-');
+        const vals = [idx + 1, rowData.nominal || '-', rowData.tolerance || '-', rowData.type || '-', ...mValsExcel, rowData.mean || '-', rowData.status || '-'];
         vals.forEach((val, ci) => {
           const c = ws.getCell(String.fromCharCode(66 + ci) + row);
           c.value = val;
           c.font = { size: 10, name: 'Arial' };
           c.alignment = { horizontal: 'center', vertical: 'middle' };
-          if (ci === 8) {
+          const statusExcelIdx = 4 + measurementCount; // 0-based within vals
+          if (ci === statusExcelIdx) {
             const su = String(val).toUpperCase();
             if (su === 'NO_GO' || su === 'NO-GO' || su === 'NO GO') {
               c.font = { size: 10, name: 'Arial', color: { argb: 'CC0000' }, bold: true };
@@ -1160,14 +1187,17 @@ const Report = ({
                           {tableData.map((row, ri) => (
                             <tr key={ri} style={{ backgroundColor: ri % 2 === 0 ? 'white' : '#fafafa' }}>
                               {tableHeaders.map((h, ci) => {
-                                const ks = ['id', 'nominal', 'tolerance', 'type', 'm1', 'm2', 'm3', 'mean', 'status'];
-                                const ck = ks[ci]; const cv = ci === 0 ? (ri + 1).toString() : (row[ck] || 'N/A');
+                                // Build key list dynamically: id, nominal, tolerance, type, m1..mn, mean, status
+                                const ks = ['id', 'nominal', 'tolerance', 'type', ...Array.from({ length: measurementCount }, (_, i) => `m${i + 1}`), 'mean', 'status'];
+                                const ck = ks[ci]; const cv = ci === 0 ? (ri + 1).toString() : (row[ck] ?? 'N/A');
+                                const statusIdx = ks.length - 1;
+                                const isStatusCol = ci === statusIdx;
                                 return (
                                   <td key={ci} onContextMenu={(e) => isEditing && handleContextMenu(e, ri, ci)}
-                                    style={{ padding: '0.5rem', color: '#374151', borderBottom: '1px solid #e5e7eb', borderRight: ci === tableHeaders.length - 1 ? 'none' : '1px solid #e5e7eb', textAlign: ci >= 3 && ci <= 6 ? 'center' : 'left', cursor: isEditing ? 'context-menu' : 'default' }}
-                                    contentEditable={isEditing && ci !== 8} suppressContentEditableWarning
-                                    onBlur={(e) => { if (isEditing && ci !== 8) { const nd = [...tableData]; nd[ri][ck] = e.currentTarget.textContent; setTableData(nd); } }}>
-                                    {ci === 8 ? <span style={{ padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '600', backgroundColor: cv === 'GO' ? '#d1fae5' : cv === 'NO-GO' ? '#fee2e2' : '#f3f4f6', color: cv === 'GO' ? '#065f46' : cv === 'NO-GO' ? '#991b1b' : '#6b7280', display: 'inline-block' }}>{cv}</span> : cv}
+                                    style={{ padding: '0.5rem', color: '#374151', borderBottom: '1px solid #e5e7eb', borderRight: ci === tableHeaders.length - 1 ? 'none' : '1px solid #e5e7eb', textAlign: ci >= 3 && ci < statusIdx ? 'center' : 'left', cursor: isEditing ? 'context-menu' : 'default' }}
+                                    contentEditable={isEditing && !isStatusCol} suppressContentEditableWarning
+                                    onBlur={(e) => { if (isEditing && !isStatusCol) { const nd = [...tableData]; nd[ri][ck] = e.currentTarget.textContent; setTableData(nd); } }}>
+                                    {isStatusCol ? <span style={{ padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '600', backgroundColor: cv === 'GO' ? '#d1fae5' : cv === 'NO-GO' || cv === 'NO_GO' ? '#fee2e2' : '#f3f4f6', color: cv === 'GO' ? '#065f46' : cv === 'NO-GO' || cv === 'NO_GO' ? '#991b1b' : '#6b7280', display: 'inline-block' }}>{cv}</span> : cv}
                                   </td>
                                 );
                               })}

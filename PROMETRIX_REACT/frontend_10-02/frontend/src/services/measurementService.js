@@ -33,6 +33,8 @@ export const measurementService = {
     m1,
     m2,
     m3,
+    m4,
+    m5,
     measuredBy,
     notes
   }) => {
@@ -53,6 +55,8 @@ export const measurementService = {
       m1: toNumber(m1),
       m2: toNumber(m2),
       m3: toNumber(m3),
+      m4: toNumber(m4),
+      m5: toNumber(m5),
       measured_by: measuredBy || null,
       notes: notes || null
       // mean is calculated on the backend if not provided

@@ -15,6 +15,8 @@ class MeasurementBase(BaseModel):
     m1: Optional[float] = None
     m2: Optional[float] = None
     m3: Optional[float] = None
+    m4: Optional[float] = None
+    m5: Optional[float] = None
     mean: Optional[float] = None
     go_or_no_go: Optional[GoNoGoStatus] = None
     measured_by: Optional[str] = None
@@ -34,6 +36,8 @@ class MeasurementUpdate(BaseModel):
     m1: Optional[float] = None
     m2: Optional[float] = None
     m3: Optional[float] = None
+    m4: Optional[float] = None
+    m5: Optional[float] = None
     mean: Optional[float] = None
     go_or_no_go: Optional[GoNoGoStatus] = None
     measured_by: Optional[str] = None

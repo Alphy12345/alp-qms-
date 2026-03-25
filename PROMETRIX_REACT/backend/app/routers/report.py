@@ -256,6 +256,8 @@ def get_part_report(
                     m1=m.m1,
                     m2=m.m2,
                     m3=m.m3,
+                    m4=m.m4,
+                    m5=m.m5,
                     mean=m.mean,
                     go_or_no_go=m.go_or_no_go,
                     measured_by=m.measured_by,

@@ -108,6 +108,8 @@ const InspectionPlan = () => {
   const [selectedQuantity, setSelectedQuantity] = useState(1);
   // Quantity from DB (PartLocation) - used for Part dropdown options; default 1 until loaded
   const [bocQuantityFromDb, setBocQuantityFromDb] = useState(1);
+  // Number of measurement fields to display (1-5)
+  const [measurementCount, setMeasurementCount] = useState(3);
 
   // Keep selected quantity in range when bocQuantityFromDb changes
   useEffect(() => {
@@ -629,6 +631,8 @@ if (partId) {
             m1: meas.m1 != null ? String(meas.m1) : '',
             m2: meas.m2 != null ? String(meas.m2) : '',
             m3: meas.m3 != null ? String(meas.m3) : '',
+            m4: meas.m4 != null ? String(meas.m4) : '',
+            m5: meas.m5 != null ? String(meas.m5) : '',
             instrumentUsed: bbox.measuring_instrument || '',
             goOrNoGo: meas.go_or_no_go || null
           });
@@ -673,6 +677,8 @@ if (partId) {
               m1: measGdt.m1 != null ? String(measGdt.m1) : '',
               m2: measGdt.m2 != null ? String(measGdt.m2) : '',
               m3: measGdt.m3 != null ? String(measGdt.m3) : '',
+              m4: measGdt.m4 != null ? String(measGdt.m4) : '',
+              m5: measGdt.m5 != null ? String(measGdt.m5) : '',
               instrumentUsed: bbox.measuring_instrument || '',
               goOrNoGo: measGdt.go_or_no_go || null
             });
@@ -741,6 +747,8 @@ if (partId) {
           m1: measEmpty.m1 != null ? String(measEmpty.m1) : '',
           m2: measEmpty.m2 != null ? String(measEmpty.m2) : '',
           m3: measEmpty.m3 != null ? String(measEmpty.m3) : '',
+          m4: measEmpty.m4 != null ? String(measEmpty.m4) : '',
+          m5: measEmpty.m5 != null ? String(measEmpty.m5) : '',
           instrumentUsed: bbox.measuring_instrument || '',
           goOrNoGo: measEmpty.go_or_no_go || null
         });
@@ -758,9 +766,9 @@ if (partId) {
     setTimeout(() => setStatusMessage(null), 3000);
   };
   
-  // Handle cell double-click for editing (edit mode: all fields; measure entry mode: M1/M2/M3 only)
+  // Handle cell double-click for editing (edit mode: all fields; measure entry mode: M fields only)
   const handleCellDoubleClick = (rowId, field, currentValue) => {
-    const measureFields = ['m1', 'm2', 'm3'];
+    const measureFields = ['m1', 'm2', 'm3', 'm4', 'm5'].slice(0, measurementCount);
     const canEditAll = isEditMode;
     const canEditMeasure = viewMode === 'measure' && isMeasureEntryMode && measureFields.includes(field);
     if (!canEditAll && !canEditMeasure) return;
@@ -768,11 +776,27 @@ if (partId) {
     setEditValue(currentValue || '');
   };
 
-  // Next cell for measure entry: m1→m2→m3→next row m1
+  // Compute actual as mean of visible measurements (m1-m{measurementCount}) when all are numeric
+  const computeActualFromMeasurements = (row) => {
+    const measureFields = ['m1', 'm2', 'm3', 'm4', 'm5'].slice(0, measurementCount);
+    const values = measureFields.map(f => parseFloat(row[f])).filter(v => Number.isFinite(v));
+    if (values.length === measureFields.length && values.length > 0) {
+      const mean = values.reduce((a, b) => a + b, 0) / values.length;
+      return String(Number(mean.toFixed(6)));
+    }
+    return row.actual || '';
+  };
+
+  // Next cell for measure entry: m1→m2→m3→m4→m5→next row m1
   const getNextMeasureCell = (rowIndex, field) => {
-    if (field === 'm1') return { rowIndex, field: 'm2' };
-    if (field === 'm2') return { rowIndex, field: 'm3' };
-    if (field === 'm3' && rowIndex < bomData.length - 1) return { rowIndex: rowIndex + 1, field: 'm1' };
+    const measureFields = ['m1', 'm2', 'm3', 'm4', 'm5'].slice(0, measurementCount);
+    const currentIndex = measureFields.indexOf(field);
+    if (currentIndex >= 0 && currentIndex < measureFields.length - 1) {
+      return { rowIndex, field: measureFields[currentIndex + 1] };
+    }
+    if (currentIndex === measureFields.length - 1 && rowIndex < bomData.length - 1) {
+      return { rowIndex: rowIndex + 1, field: 'm1' };
+    }
     return null;
   };
 
@@ -788,18 +812,6 @@ if (partId) {
     }
   };
   
-  // Compute actual as mean of m1, m2, m3 when all three are numeric
-  const computeActualFromMeasurements = (row) => {
-    const m1 = parseFloat(row.m1);
-    const m2 = parseFloat(row.m2);
-    const m3 = parseFloat(row.m3);
-    if (Number.isFinite(m1) && Number.isFinite(m2) && Number.isFinite(m3)) {
-      const mean = (m1 + m2 + m3) / 3;
-      return String(Number(mean.toFixed(6)));
-    }
-    return row.actual || '';
-  };
-
   // Check if actual is within nominal ± tolerance (nominal - ltol <= actual <= nominal + utol)
   const getRowToleranceStatus = (item) => {
     const actual = parseFloat(item.actual);
@@ -821,8 +833,9 @@ if (partId) {
     let updatedBomData = bomData.map(item => {
       if (item.id !== editingCell.rowId) return item;
       const updated = { ...item, [editingCell.field]: editValue };
-      // When saving m1, m2, or m3, set actual = mean(m1, m2, m3)
-      if (['m1', 'm2', 'm3'].includes(editingCell.field)) {
+      // When saving any M field, compute actual as mean of visible measurements
+      const allMFields = ['m1', 'm2', 'm3', 'm4', 'm5'];
+      if (allMFields.includes(editingCell.field)) {
         updated.actual = computeActualFromMeasurements(updated);
       }
       return updated;
@@ -1105,7 +1118,7 @@ const pdf = new jsPDF('p', 'mm', 'a4');
     if (e.key === 'Tab') {
       e.preventDefault();
       
-      const editableFields = ['nominal', 'actual', 'utol', 'ltol', 'dimensionType', 'zone', 'm1', 'm2', 'm3', 'instrumentUsed'];
+      const editableFields = ['nominal', 'actual', 'utol', 'ltol', 'dimensionType', 'zone', 'm1', 'm2', 'm3', 'm4', 'm5', 'instrumentUsed'];
       const currentFieldIndex = editableFields.indexOf(field);
       
       if (e.shiftKey) {
@@ -1185,8 +1198,8 @@ const pdf = new jsPDF('p', 'mm', 'a4');
           gdt_data: bbox.extracted_gdt || []
         });
         
-        // Save measurement details (m1, m2, m3) to measurements table when present
-        const hasMeasurements = row.m1 !== '' || row.m2 !== '' || row.m3 !== '';
+        // Save measurement details (m1-m5) to measurements table when present
+        const hasMeasurements = row.m1 !== '' || row.m2 !== '' || row.m3 !== '' || row.m4 !== '' || row.m5 !== '';
         if (hasMeasurements && bbox.balloon_db_id != null) {
           try {
             await measurementService.upsertMeasurementForBalloon({
@@ -1196,6 +1209,8 @@ const pdf = new jsPDF('p', 'mm', 'a4');
               m1: row.m1 || null,
               m2: row.m2 || null,
               m3: row.m3 || null,
+              m4: row.m4 || null,
+              m5: row.m5 || null,
             });
           } catch (measErr) {
             console.error('Error saving measurement for balloon:', measErr);
@@ -4004,11 +4019,11 @@ const loadNotes = async () => {
                 <button 
                   className={`sidebar-tool-button ${isMeasureEntryMode ? 'active' : ''}`} 
                   onClick={handleMeasureEntryToggle}
-                  title="Measure - Enter M1/M2/M3; Enter moves to next cell/row"
+                  title="Measure Entry Mode - Click to enable editing of M1-M5 measurement fields"
                 >
                   <Ruler size={20} />
                 </button>
-                <span className="sidebar-tool-label">Measure</span>
+                <span className="sidebar-tool-label">Measure Entry</span>
               </div>
               <div className="sidebar-tool-group">
                 <button 
@@ -4206,6 +4221,35 @@ const loadNotes = async () => {
                       </select>
                     </div>
                   )}
+                  {viewMode === 'measure' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <label htmlFor="measurement-count-select" style={{ fontSize: '0.875rem', fontWeight: 500, color: '#374151', whiteSpace: 'nowrap' }}>
+                        Measurements :
+                      </label>
+                      <select
+                        id="measurement-count-select"
+                        value={measurementCount}
+                        onChange={(e) => setMeasurementCount(Number(e.target.value))}
+                        style={{
+                          padding: '0.35rem 0.75rem',
+                          fontSize: '0.875rem',
+                          borderRadius: '6px',
+                          border: '1px solid #d1d5db',
+                          background: '#ffffff',
+                          color: '#111827',
+                          cursor: 'pointer',
+                          minWidth: '60px',
+                        }}
+                        title="Select how many measurements (M1-M5) to display and record"
+                      >
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
             {hasUnsavedChanges && (
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <span style={{ 
@@ -4317,9 +4361,9 @@ const loadNotes = async () => {
                   {viewMode === 'measure' && (
                     <>
                       <th>Zone</th>
-                      <th>M1</th>
-                      <th>M2</th>
-                      <th>M3</th>
+                      {[1, 2, 3, 4, 5].slice(0, measurementCount).map(n => (
+                        <th key={`m${n}`}>M{n}</th>
+                      ))}
                     </>
                   )}
                   <th>Instrument</th>
@@ -4328,7 +4372,7 @@ const loadNotes = async () => {
               <tbody>
                 {bomData.length > 0 ? (
                   bomData.map((item, rowIndex) => {
-                    const measureFields = ['m1', 'm2', 'm3'];
+                    const measureFields = ['m1', 'm2', 'm3', 'm4', 'm5'].slice(0, measurementCount);
                     const renderCell = (field, value) => {
                       const canEditCell = isEditMode || (viewMode === 'measure' && isMeasureEntryMode && measureFields.includes(field));
                       const isEditing = editingCell?.rowId === item.id && editingCell?.field === field;
@@ -4414,9 +4458,9 @@ const loadNotes = async () => {
                         {viewMode === 'measure' && (
                           <>
                             <td>{renderCell('zone', item.zone)}</td>
-                            <td>{renderCell('m1', item.m1)}</td>
-                            <td>{renderCell('m2', item.m2)}</td>
-                            <td>{renderCell('m3', item.m3)}</td>
+                            {[1, 2, 3, 4, 5].slice(0, measurementCount).map(n => (
+                              <td key={`m${n}-cell`}>{renderCell(`m${n}`, item[`m${n}`])}</td>
+                            ))}
                           </>
                         )}
                         <td>{renderCell('instrumentUsed', item.instrumentUsed)}</td>
@@ -4425,7 +4469,7 @@ const loadNotes = async () => {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={viewMode === 'plan' ? '6' : '10'} style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                    <td colSpan={viewMode === 'plan' ? 6 : 7 + measurementCount} style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
                       {isSelectionMode ? 'Drag on PDF to select area and process dimensions' : 
                        isStampMode ? 'Drag on PDF to select area for manual entry' : 
                        'No inspection data available'}
@@ -4785,6 +4829,8 @@ const loadNotes = async () => {
   logo={logo}
   setLogo={setLogo}
   customFields={customFields}
+  notes={notes}
+  measurementCount={measurementCount}
   showReportModal={showReportModal}
   setShowReportModal={setShowReportModal}
   showCustomFieldsModal={showCustomFieldsModal}
