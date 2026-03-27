@@ -320,6 +320,10 @@ if (partId) {
   // Update BOM data when bounding boxes change
   useEffect(() => {
     let cancelled = false;
+    
+    // Reset measurement count to default when part or quantity changes
+    setMeasurementCount(3);
+
     (async () => {
       // Load saved measurements for this part and selected quantity (balloon_db_id -> latest measurement)
       let measurementsByBalloon = {};
@@ -327,6 +331,16 @@ if (partId) {
         try {
           const list = await measurementService.getMeasurementsByPart(partId, selectedQuantity);
           if (Array.isArray(list)) {
+            // Auto-detect measurement count based on filled data
+            const hasM5 = list.some(m => m.m5 !== null && m.m5 !== '' && m.m5 !== undefined && m.m5 !== '-');
+            const hasM4 = list.some(m => m.m4 !== null && m.m4 !== '' && m.m4 !== undefined && m.m4 !== '-');
+            
+            if (hasM5) {
+              if (measurementCount < 5) setMeasurementCount(5);
+            } else if (hasM4) {
+              if (measurementCount < 4) setMeasurementCount(4);
+            }
+
             list.forEach((m) => {
               const bid = m.balloon_id;
               if (bid != null) {

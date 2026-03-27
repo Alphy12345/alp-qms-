@@ -13,7 +13,7 @@ export const NavContext = createContext();
 
 // Protected Route component - redirects to login if not authenticated
 function ProtectedRoute({ children }) {
-  const user = localStorage.getItem("user");
+  const user = sessionStorage.getItem("user");
   const location = useLocation();
   
   if (!user) {

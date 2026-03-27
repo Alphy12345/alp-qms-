@@ -31,7 +31,7 @@ function getHeaderTitle(pathname) {
 
 function getUserDisplayName() {
   try {
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const user = JSON.parse(sessionStorage.getItem('user') || '{}');
     return user.username || 'User';
   } catch {
     return 'User';
@@ -39,8 +39,8 @@ function getUserDisplayName() {
 }
 
 function handleLogout(navigate) {
-  localStorage.removeItem('user');
-  localStorage.removeItem('token');
+  sessionStorage.removeItem('user');
+  sessionStorage.removeItem('token');
   navigate('/');
 }
 

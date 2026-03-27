@@ -261,12 +261,12 @@ const Report = ({
       const { jsPDF } = await import('jspdf');
       const pdfId = reportData?.pdf_id || reportData?.pdfId || reportData?.document_id || reportData?.documentId || reportData?.quantity_reports?.[0]?.pdf_id || reportData?.quantity_reports?.[0]?.pdfId || partData?.document_id || partData?.documentId || partData?.pdf_id || partData?.pdfId;
       
-      // A4 page setup with proper margins (20mm top/bottom, 25mm left/right)
+      // A4 page setup with optimized margins (15mm)
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      const marginLeft = 25;
-      const marginRight = 25;
+      const marginLeft = 15;
+      const marginRight = 15;
       const marginTop = 20;
       const marginBottom = 20;
       const contentWidth = pageWidth - marginLeft - marginRight;
@@ -368,30 +368,36 @@ const Report = ({
       pdf.setFontSize(10);
       
       piData.forEach(([label, value]) => {
-        checkPB(rowHeight + 1);
+        const wrappedLabel = pdf.splitTextToSize(label, labelColWidth - 4);
+        const wrappedValue = pdf.splitTextToSize(value, valueColWidth - 4);
+        const piRowHeight = Math.max(8, Math.max(wrappedLabel.length, wrappedValue.length) * 4.5);
+
+        checkPB(piRowHeight + 1);
         
-        // Label cell with 15% gray shading
+        // Label cell
         pdf.setFillColor(...GRAY_15);
-        pdf.rect(marginLeft, y, labelColWidth, rowHeight, 'F');
+        pdf.rect(marginLeft, y, labelColWidth, piRowHeight, 'F');
         pdf.setDrawColor(...LIGHT_GRAY);
         pdf.setLineWidth(0.3);
-        pdf.rect(marginLeft, y, labelColWidth, rowHeight); // left border
-        pdf.line(marginLeft, y + rowHeight, marginLeft + labelColWidth, y + rowHeight); // bottom
+        pdf.rect(marginLeft, y, labelColWidth, piRowHeight); 
         
         pdf.setFont('helvetica', 'bold');
         pdf.setTextColor(...BLACK);
-        pdf.text(label, marginLeft + 2, y + 5);
+        wrappedLabel.forEach((line, i) => {
+          pdf.text(line, marginLeft + 2, y + 5 + (i * 4));
+        });
         
-        // Value cell (white background)
+        // Value cell
         pdf.setFillColor(...WHITE);
-        pdf.rect(marginLeft + labelColWidth, y, valueColWidth, rowHeight, 'F');
-        pdf.rect(marginLeft + labelColWidth, y, valueColWidth, rowHeight); // cell border
-        pdf.line(marginLeft + labelColWidth, y + rowHeight, marginLeft + contentWidth, y + rowHeight); // bottom
+        pdf.rect(marginLeft + labelColWidth, y, valueColWidth, piRowHeight, 'F');
+        pdf.rect(marginLeft + labelColWidth, y, valueColWidth, piRowHeight);
         
         pdf.setFont('helvetica', 'normal');
-        pdf.text(value, marginLeft + labelColWidth + 2, y + 5);
+        wrappedValue.forEach((line, i) => {
+          pdf.text(line, marginLeft + labelColWidth + 2, y + 5 + (i * 4));
+        });
         
-        addY(rowHeight);
+        addY(piRowHeight);
       });
       
       // Custom headers if present
@@ -399,31 +405,37 @@ const Report = ({
         addY(5);
         customHeaders.forEach((h) => { 
           if (!h) return;
-          checkPB(rowHeight + 1);
-          
           const label = String(h.fieldname || '') + ':';
           const value = String(h.value ?? '');
           
+          const wrappedLabel = pdf.splitTextToSize(label, labelColWidth - 4);
+          const wrappedValue = pdf.splitTextToSize(value, valueColWidth - 4);
+          const customRowHeight = Math.max(8, Math.max(wrappedLabel.length, wrappedValue.length) * 4.5);
+
+          checkPB(customRowHeight + 1);
+          
           // Label cell
           pdf.setFillColor(...GRAY_15);
-          pdf.rect(marginLeft, y, labelColWidth, rowHeight, 'F');
+          pdf.rect(marginLeft, y, labelColWidth, customRowHeight, 'F');
           pdf.setDrawColor(...LIGHT_GRAY);
-          pdf.rect(marginLeft, y, labelColWidth, rowHeight);
-          pdf.line(marginLeft, y + rowHeight, marginLeft + labelColWidth, y + rowHeight);
+          pdf.rect(marginLeft, y, labelColWidth, customRowHeight);
           
           pdf.setFont('helvetica', 'bold');
-          pdf.text(label, marginLeft + 2, y + 5);
+          wrappedLabel.forEach((line, i) => {
+            pdf.text(line, marginLeft + 2, y + 5 + (i * 4));
+          });
           
           // Value cell
           pdf.setFillColor(...WHITE);
-          pdf.rect(marginLeft + labelColWidth, y, valueColWidth, rowHeight, 'F');
-          pdf.rect(marginLeft + labelColWidth, y, valueColWidth, rowHeight);
-          pdf.line(marginLeft + labelColWidth, y + rowHeight, marginLeft + contentWidth, y + rowHeight);
+          pdf.rect(marginLeft + labelColWidth, y, valueColWidth, customRowHeight, 'F');
+          pdf.rect(marginLeft + labelColWidth, y, valueColWidth, customRowHeight);
           
           pdf.setFont('helvetica', 'normal');
-          pdf.text(value, marginLeft + labelColWidth + 2, y + 5);
+          wrappedValue.forEach((line, i) => {
+            pdf.text(line, marginLeft + labelColWidth + 2, y + 5 + (i * 4));
+          });
           
-          addY(rowHeight);
+          addY(customRowHeight);
         });
       }
       
@@ -464,22 +476,29 @@ const Report = ({
       pdf.text('Inspection Data', marginLeft, y); 
       y += 8;
       
-      // Original table styling with green header
+      // Optimized column widths to fill 100% of the page
       const tm = marginLeft;
       const tw2 = contentWidth;
-      // Column widths: ID, NOMINAL, TOLERANCE, TYPE, M1..Mn, MEAN, STATUS
-      const mColW = tw2 * 0.06;
-      const fixedColsW = tw2 * 0.04 + tw2 * 0.10 + tw2 * 0.13 + tw2 * 0.18 + tw2 * 0.06 + tw2 * 0.09; // ID+NOM+TOL+TYPE+MEAN+STATUS
-      const remainW = tw2 - fixedColsW;
-      const mColWAdj = Math.min(mColW, remainW / measurementCount);
+      
+      const idW = 0.05;
+      const nominalW = 0.12;
+      const toleranceW = 0.15;
+      const typeW = 0.28; // Increased for longer descriptions
+      const meanW = 0.08;
+      const statusW = 0.10;
+      
+      const fixedTotal = idW + nominalW + toleranceW + typeW + meanW + statusW; 
+      const availableForM = 1.0 - fixedTotal;
+      const mColW = availableForM / measurementCount;
+
       const cw = [
-        tw2 * 0.04,                                      // ID
-        tw2 * 0.10,                                      // NOMINAL
-        tw2 * 0.13,                                      // TOLERANCE
-        tw2 * 0.18,                                      // TYPE
-        ...Array.from({ length: measurementCount }, () => mColWAdj), // M1..Mn
-        tw2 * 0.06,                                      // MEAN
-        tw2 * 0.09                                       // STATUS
+        tw2 * idW,
+        tw2 * nominalW,
+        tw2 * toleranceW,
+        tw2 * typeW,
+        ...Array.from({ length: measurementCount }, () => tw2 * mColW),
+        tw2 * meanW,
+        tw2 * statusW
       ];
       const hdrs = ['ID', 'NOMINAL', 'TOLERANCE', 'TYPE', ...Array.from({ length: measurementCount }, (_, i) => `M${i + 1}`), 'MEAN', 'STATUS'];
       
@@ -505,48 +524,82 @@ const Report = ({
       pdf.setFont('helvetica', 'normal');
       
       tableData.forEach((row, idx) => {
-        if (y > pageHeight - marginTop - 20) { 
-          pdf.addPage(); 
-          y = marginTop; 
-        }
+        const mVals = Array.from({ length: measurementCount }, (_, i) => {
+          const val = row[`m${i + 1}`];
+          return (val === null || val === undefined || val === 'N/A') ? '-' : String(val).trim();
+        });
         
-        const mVals = Array.from({ length: measurementCount }, (_, i) => String(row[`m${i + 1}`] ?? '-').trim());
         const vals = [
           String(idx + 1), 
-          String(row.nominal ?? '-').trim(), 
-          String(row.tolerance || '-').trim(), 
-          String(row.type || '-').trim(), 
+          (row.nominal === null || row.nominal === undefined || row.nominal === 'N/A') ? '-' : String(row.nominal).trim(), 
+          (!row.tolerance || row.tolerance === 'N/A') ? '-' : String(row.tolerance).trim(), 
+          (!row.type || row.type === 'N/A') ? '-' : String(row.type).trim(), 
           ...mVals,
-          String(row.mean ?? '-').trim(), 
-          String(row.status || '-').trim()
+          (row.mean === null || row.mean === undefined || row.mean === 'N/A') ? '-' : String(row.mean).trim(), 
+          (!row.status || row.status === 'N/A') ? '-' : String(row.status).trim()
         ];
         
+        // Dynamic row height computation: split text into lines based on column width
+        const cellLines = vals.map((val, i) => pdf.splitTextToSize(val, cw[i] - 1));
+        const maxLines = Math.max(...cellLines.map(lines => lines.length));
+        const currentRowHeight = Math.max(10, maxLines * 4.5); 
+
+        // Check for page break
+        if (y + currentRowHeight > pageHeight - marginTop - 20) { 
+          pdf.addPage(); 
+          y = marginTop; 
+          // Redraw header on new page for better continuity
+          pdf.setFont('helvetica', 'bold');
+          let hcx = tm;
+          hdrs.forEach((h, i) => {
+            pdf.setFillColor(4, 120, 87);
+            pdf.rect(hcx, y, cw[i], hh, 'F');
+            pdf.rect(hcx, y, cw[i], hh);
+            pdf.setTextColor(255, 255, 255);
+            pdf.text(h, hcx + cw[i] / 2, y + hh / 2 + 2, { align: 'center' });
+            hcx += cw[i];
+          });
+          y += hh;
+          pdf.setFont('helvetica', 'normal');
+        }
+        
         cx = tm;
-        vals.forEach((val, i) => {
+        cellLines.forEach((lines, i) => {
           pdf.setFillColor(255, 255, 255); 
-          pdf.rect(cx, y, cw[i], rwh, 'F'); 
+          pdf.rect(cx, y, cw[i], currentRowHeight, 'F'); 
           pdf.setDrawColor(0, 0, 0); 
           pdf.setLineWidth(0.2); 
-          pdf.rect(cx, y, cw[i], rwh);
+          pdf.rect(cx, y, cw[i], currentRowHeight);
           
-          const statusColIdx = 4 + measurementCount + 1; // TYPE(3) + M cols + MEAN
+          // Status column color coding
+          const statusColIdx = 4 + measurementCount + 1; // ID(0),NOM(1),TOL(2),TYPE(3) + M... + MEAN + STATUS
           if (i === statusColIdx) { 
             const su = vals[statusColIdx].toUpperCase(); 
             if (su === 'NO_GO' || su === 'NO-GO' || su === 'NO GO') 
-              pdf.setTextColor(255, 0, 0); 
+              pdf.setTextColor(204, 0, 0); 
             else if (su === 'GO') 
-              pdf.setTextColor(0, 200, 0); 
+              pdf.setTextColor(0, 128, 0); 
             else 
               pdf.setTextColor(0, 0, 0); 
           } else { 
             pdf.setTextColor(0, 0, 0); 
           }
           
-          pdf.text(val.substring(0, 30), cx + cw[i] / 2, y + rwh / 2 + 2, { align: 'center' }); 
+          // Vertical centering of wrapped text
+          const textHeight = lines.length * 3.5;
+          const startY = y + (currentRowHeight - textHeight) / 2 + 3;
+          
+          // Content Alignment: Left for TYPE, center for others
+          const align = i === 3 ? 'left' : 'center'; // TYPE column is index 3
+          const textX = align === 'left' ? cx + 2 : cx + cw[i] / 2;
+          
+          lines.forEach((line, lIdx) => {
+            pdf.text(line, textX, startY + lIdx * 3.5, { align: align });
+          });
           cx += cw[i];
         });
         
-        y += rwh;
+        y += currentRowHeight;
       });
 
       // ===== NOTES SECTION (Original styling) =====

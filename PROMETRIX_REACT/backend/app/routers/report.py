@@ -180,7 +180,7 @@ def get_part_report(
             created_at, updated_at
         FROM balloons
         WHERE part_id = :part_id
-        ORDER BY created_at ASC
+        ORDER BY page ASC, y ASC, x ASC
     """)
     balloon_result = db.execute(balloon_query, {"part_id": part_id})
     balloon_rows = balloon_result.fetchall()

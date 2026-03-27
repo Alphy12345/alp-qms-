@@ -202,10 +202,9 @@ function GlassPanel() {
   const mismatch = reg.confirm && reg.confirm !== reg.password;
   const switchTo = (v) => { setView(v); setShowP(false); setShowC(false); setError(""); };
 
-  useEffect(() => {
-    const user = localStorage.getItem("user");
-    if (user) navigate("/dashboard");
-  }, [navigate]);
+  // useEffect removed to prevent automatic navigation to dashboard
+  // Only after login can the user use the software.
+
 
   const handleLogin = async () => {
     if (!login.username || !login.password) {
@@ -228,8 +227,8 @@ function GlassPanel() {
       
       const data = await response.json();
       if (data.success) {
-        localStorage.setItem("user", JSON.stringify(data.user));
-        localStorage.setItem("token", data.token);
+        sessionStorage.setItem("user", JSON.stringify(data.user));
+        sessionStorage.setItem("token", data.token);
         navigate("/dashboard");
       } else {
         setError(data.message || "Login failed");
@@ -237,8 +236,8 @@ function GlassPanel() {
     } catch (err) {
       if (login.username === "system admin" && login.password === "qms2026#") {
         const defaultUser = { id: 1, username: "system admin", role: "admin", created_at: new Date().toISOString() };
-        localStorage.setItem("user", JSON.stringify(defaultUser));
-        localStorage.setItem("token", "default_admin_token");
+        sessionStorage.setItem("user", JSON.stringify(defaultUser));
+        sessionStorage.setItem("token", "default_admin_token");
         navigate("/dashboard");
       } else {
         setError("Cannot connect to server. Using fallback mode only for system admin.");
@@ -267,8 +266,8 @@ function GlassPanel() {
       
       const data = await response.json();
       if (data.success) {
-        localStorage.setItem("user", JSON.stringify(data.user));
-        localStorage.setItem("token", data.token);
+        sessionStorage.setItem("user", JSON.stringify(data.user));
+        sessionStorage.setItem("token", data.token);
         navigate("/dashboard");
       } else {
         setError(data.message || "Registration failed");
@@ -293,7 +292,7 @@ function GlassPanel() {
 
       <div key={view} style={{ animation:"gpIn .32s ease" }}>
         {view === "login" ? (
-          <>
+          <form onSubmit={(e) => { e.preventDefault(); handleLogin(); }}>
             <h2 style={G.h2}>Welcome back</h2>
             <p  style={G.sub}>Sign in to your workspace</p>
 
@@ -310,23 +309,12 @@ function GlassPanel() {
               <span style={G.forgotTxt}>Forgot password?</span>
             </div>
 
-            <button style={{...G.btn, opacity: loading ? 0.7 : 1}} type="button" onClick={handleLogin} disabled={loading}>
+            <button style={{...G.btn, opacity: loading ? 0.7 : 1}} type="submit" disabled={loading}>
               {loading ? "Signing In..." : "Sign In →"}
             </button>
-
-            <div style={G.divRow}><span style={G.divLine}/><span style={G.divTxt}>or</span><span style={G.divLine}/></div>
-
-            <p style={G.sw}>
-              Don't have an account?{" "}
-              <button style={G.swLink} onClick={() => switchTo("register")} type="button">Create one</button>
-            </p>
-
-            <p style={G.defaultHint}>
-              <strong>Default:</strong> system admin / qms2026#
-            </p>
-          </>
+          </form>
         ) : (
-          <>
+          <form onSubmit={(e) => { e.preventDefault(); handleRegister(); }}>
             <h2 style={G.h2}>Create account</h2>
             <p  style={G.sub}>Join your team's workspace</p>
 
@@ -343,10 +331,26 @@ function GlassPanel() {
               icon={<LockIco/>} showToggle show={showC} onToggle={() => setShowC(!showC)}
               error={mismatch ? "Passwords do not match" : null}/>
 
-            <button style={{...G.btn, marginTop:4, opacity: loading ? 0.7 : 1}} type="button" onClick={handleRegister} disabled={loading}>
+            <button style={{...G.btn, marginTop:4, opacity: loading ? 0.7 : 1}} type="submit" disabled={loading}>
               {loading ? "Creating Account..." : "Register +"}
             </button>
+          </form>
+        )}
+        {view === "login" ? (
+          <>
+            <div style={G.divRow}><span style={G.divLine}/><span style={G.divTxt}>or</span><span style={G.divLine}/></div>
 
+            <p style={G.sw}>
+              Don't have an account?{" "}
+              <button style={G.swLink} onClick={() => switchTo("register")} type="button">Create one</button>
+            </p>
+
+            <p style={G.defaultHint}>
+              <strong>Default:</strong> system admin / qms2026#
+            </p>
+          </>
+        ) : (
+          <>
             <div style={G.divRow}><span style={G.divLine}/><span style={G.divTxt}>or</span><span style={G.divLine}/></div>
 
             <p style={G.sw}>
